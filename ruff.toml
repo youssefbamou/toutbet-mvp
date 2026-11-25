@@ -1,0 +1,10 @@
+# Analyse statique locale (règles Bandit "S" incluses), complémentaire de Semgrep
+line-length = 120
+[lint]
+select = ["E", "F", "W", "B", "S"]
+ignore = ["E501"]
+[lint.per-file-ignores]
+# Tests, fuzzing et charge : assert, mots de passe de test fictifs, random non cryptographique voulus
+"tests/**" = ["S101", "S105", "S311"]
+"security/**" = ["S105", "S311", "E402"]
+"load/**" = ["S105", "S311", "E402"]

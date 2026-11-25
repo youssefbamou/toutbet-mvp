@@ -1,0 +1,21 @@
+# Secrets : ne JAMAIS versionner
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Données locales
+*.sqlite3
+*.sqlite3-*
+load/seed.json
+security/reports/server.log
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+security/reports/dast_report.md
