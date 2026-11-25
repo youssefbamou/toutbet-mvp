@@ -39,6 +39,8 @@ def load_config(overrides: dict | None = None) -> dict:
         # Trace SQL par requête (mode IAST maison) — jamais en production
         "IAST_TRACE": os.environ.get("TOUTBET_IAST_TRACE") == "1",
         "MAX_CONTENT_LENGTH": 16 * 1024,
+        # Attente max d'un verrou SQLite avant de répondre 503 (au lieu de bloquer 30 s puis 500)
+        "DB_BUSY_TIMEOUT_MS": _env_int("TOUTBET_DB_BUSY_TIMEOUT_MS", 5000),
     }
     if overrides:
         cfg.update(overrides)

@@ -7,7 +7,7 @@ from flask import Flask, g, jsonify, request
 from werkzeug.exceptions import HTTPException
 
 from .config import load_config
-from .db import close_db, connect, init_db, now
+from .db import close_db, connect, init_db, is_busy_error, now
 from .routes import ApiError, bp
 from .security import SECURITY_HEADERS, client_ip, hash_password, limiter
 
@@ -49,6 +49,12 @@ def create_app(overrides: dict | None = None) -> Flask:
 
     @app.errorhandler(Exception)
     def _unhandled(e: Exception):
+        if is_busy_error(e):
+            # Surcharge : la transaction a été annulée (aucun débit), le client peut réessayer.
+            log.warning("db_busy request_id=%s path=%s", g.get("request_id"), request.path)
+            resp = jsonify({"error": "service_busy", "request_id": g.get("request_id")})
+            resp.headers["Retry-After"] = "1"
+            return resp, 503
         # La stacktrace reste dans les logs serveur ; le client ne reçoit qu'un identifiant
         log.exception("unhandled_error request_id=%s path=%s", g.get("request_id"), request.path)
         return jsonify({"error": "internal_error", "request_id": g.get("request_id")}), 500

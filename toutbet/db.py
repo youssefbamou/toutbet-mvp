@@ -101,18 +101,25 @@ CREATE TABLE IF NOT EXISTS payment_events (
 """
 
 
-def connect(path: str) -> sqlite3.Connection:
+def connect(path: str, busy_timeout_ms: int = 30000) -> sqlite3.Connection:
     # isolation_level=None : on gère les transactions explicitement (BEGIN IMMEDIATE)
-    conn = sqlite3.connect(path, timeout=30, isolation_level=None, check_same_thread=False)
+    conn = sqlite3.connect(path, timeout=busy_timeout_ms / 1000, isolation_level=None, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute("PRAGMA busy_timeout = 30000")
+    # Le paramètre `timeout` ci-dessus règle déjà l'attente de verrou (busy timeout) :
+    # pas de PRAGMA construit dynamiquement (évite tout SQL formaté).
     return conn
+
+
+def is_busy_error(exc: BaseException) -> bool:
+    """Base verrouillée par d'autres écritures (forte charge) : erreur temporaire, pas un bug."""
+    return isinstance(exc, sqlite3.OperationalError) and any(
+        w in str(exc).lower() for w in ("database is locked", "database is busy"))
 
 
 def get_db() -> sqlite3.Connection:
     if "db" not in g:
-        g.db = connect(current_app.config["DATABASE"])
+        g.db = connect(current_app.config["DATABASE"], current_app.config["DB_BUSY_TIMEOUT_MS"])
         if current_app.config.get("IAST_TRACE"):
             from .iast import attach_sql_tracer
             attach_sql_tracer(g.db)
