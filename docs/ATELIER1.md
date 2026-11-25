@@ -2,7 +2,7 @@
 
 **Projet :** ToutBet' — plateforme mobile-first de paris personnalisés entre particuliers
 **Porteur :** Youssef Bamou
-**Membres du groupe :** _à compléter_
+**Membre du groupe :** Youssef Bamou
 **Dépôt :** https://github.com/youssefbamou/toutbet-mvp
 
 ---
