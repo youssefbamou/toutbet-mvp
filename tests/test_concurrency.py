@@ -134,3 +134,41 @@ def test_concurrent_withdrawals_never_overspend(live_server):
             f"{base}/wallet/withdraw", headers=h, json={"amount_cents": 1000}, timeout=10).status_code, range(20)))
     assert codes.count(200) == 5
     assert requests.get(f"{base}/wallet", headers=h, timeout=10).json()["balance_cents"] == 0
+
+
+# ------------------------------------------------------------------ 3. Non-régression du test de charge Locust
+
+def test_locked_database_returns_503_not_500(tmp_path):
+    """Constat Locust : sous forte charge, une mise attendait le verrou SQLite ~30 s puis
+    échouait en erreur 500. Désormais : attente bornée, réponse 503 + Retry-After, aucun débit."""
+    limiter.reset()
+    app = create_app({"ENV": "testing", "DATABASE": str(tmp_path / "lock.sqlite3"),
+                      "RATE_LIMIT_PER_MINUTE": 1_000_000, "DB_BUSY_TIMEOUT_MS": 200})
+    client = app.test_client()
+    pw = PASSWORD
+    for n in ("bookie3", "joueur3"):
+        client.post("/auth/register", json={"username": n, "password": pw})
+    body, h = signed_deposit(app.config["PAYMENT_WEBHOOK_SECRET"], "joueur3", 5000)
+    client.post("/payments/webhook", data=body, headers=h)
+    tb = client.post("/auth/login", json={"username": "bookie3", "password": pw}).json["token"]
+    tp = client.post("/auth/login", json={"username": "joueur3", "password": pw}).json["token"]
+    bet = client.post("/bets", headers={"Authorization": f"Bearer {tb}"}, json={
+        "title": "Finale", "closes_at": int(time.time()) + 3600, "invitees": ["joueur3"]}).json["id"]
+
+    blocker = connect(app.config["DATABASE"])
+    blocker.execute("BEGIN IMMEDIATE")          # une autre écriture garde le verrou
+    try:
+        t0 = time.monotonic()
+        r = client.post(f"/bets/{bet}/wagers", headers={"Authorization": f"Bearer {tp}"},
+                        json={"outcome": "YES", "amount_cents": 1000})
+        elapsed = time.monotonic() - t0
+    finally:
+        blocker.execute("ROLLBACK")
+        blocker.close()
+    assert r.status_code == 503
+    assert r.headers["Retry-After"] == "1"
+    assert set(r.json) == {"error", "request_id"}
+    assert elapsed < 5                           # échec rapide, pas 30 s
+    wallet = client.get("/wallet", headers={"Authorization": f"Bearer {tp}"}).json
+    assert wallet["balance_cents"] == 5000       # aucun débit partiel
+    limiter.reset()
